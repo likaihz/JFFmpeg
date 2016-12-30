@@ -1,12 +1,12 @@
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
-public class FFMpegUtil implements IStringGetter {
+public class FFMpegUtil implements IStringGetter{
 
-    //private final int Step = 5;
     private int runtime;
     private String ffmpegUri;
     private String originVideoUri;
@@ -119,6 +119,21 @@ public class FFMpegUtil implements IStringGetter {
 
 
     /**
+     * 压缩视频，将视频码率压缩到5000kb/s左右
+     * @param fileSavePath 输出文件存储路径
+     */
+    public void videoCompress(String fileSavePath)
+    {
+        cmd.clear();
+        cmd.add(ffmpegUri);
+        cmd.add("-i");
+        cmd.add(originVideoUri);
+        cmd.add("-b");
+        cmd.add("5000000");
+        cmd.add(fileSavePath);
+        CmdExecuter.exec(cmd, null);
+    }
+    /**
      * 切割视频
      * @param startTime 片段开始时间
      * @param partLength 片段时长
@@ -144,16 +159,36 @@ public class FFMpegUtil implements IStringGetter {
 
     }
     /**
-     * 视频切片
+     * 视频切片，生成m3u8支持的格式
+     * @param startTime 开始时间
+     * @param length 待处理片段长度
+     * @param fileSaveDir 文件保存目录
+     * @param fileSaveName 输出文件名称
      */
-    public void videoSlice(int startTime, int length, int step)
+    public void videoSlice(int startTime, int length, String fileSaveDir, String fileSaveName)
     {
-        for(int i = 0; i * step < length; i++)
-        {
-            System.out.print(i);
-            videoPart(startTime+i*step, step, originVideoUri+Integer.toString(i));
-            System.out.println(0);
-        }
+        File f = new File(fileSaveDir);
+        if(!f.exists()) f.mkdirs();
+        cmd.clear();
+        cmd.add(ffmpegUri);
+        cmd.add("-i");
+        cmd.add(originVideoUri);
+        cmd.add("-ss");
+        cmd.add(Integer.toString(startTime));
+        cmd.add("-t");
+        cmd.add(Integer.toString(length));
+        cmd.add("-acodec");
+        cmd.add("copy");
+        cmd.add("-vcodec");
+        cmd.add("copy");
+        cmd.add("-strict");
+        cmd.add("-2");
+        cmd.add("-f");
+        cmd.add("hls");
+        cmd.add("-hls_list_size");
+        cmd.add("0");
+        cmd.add(fileSaveDir+fileSaveName+".m3u8");
+        CmdExecuter.exec(cmd, null);
     }
     /**
      * 处理控制台输出信息
@@ -172,15 +207,29 @@ public class FFMpegUtil implements IStringGetter {
                 break;
             }
             case GettingRuntime:{
-                Matcher m = Pattern.compile("Duration: //w+://w+://w+").matcher(str);
-                while (m.find())
+                String regexDuration = "Duration: (.*?), start: (.*?), bitrate: (\\d*) kb\\/s";
+                Pattern pattern = Pattern.compile(regexDuration);
+                Matcher m = pattern.matcher(str);
+                if(m.find())
                 {
-                    String msg = m.group();
-                    msg = msg.replace("Duration: ", "");
-                    //runtime = TimeUtil.runtimeToSecond(msg);
+                    runtime = getTimelen(m.group(1));
                 }
-                break;
             }
         }//switch
+    }
+
+    private static int getTimelen(String timelen){
+        int min=0;
+        String strs[] = timelen.split(":");
+        if (strs[0].compareTo("0") > 0) {
+            min+=Integer.valueOf(strs[0])*60*60;//秒
+        }
+        if(strs[1].compareTo("0")>0){
+            min+=Integer.valueOf(strs[1])*60;
+        }
+        if(strs[2].compareTo("0")>0){
+            min+=Math.round(Float.valueOf(strs[2]));
+        }
+        return min;
     }
 }
